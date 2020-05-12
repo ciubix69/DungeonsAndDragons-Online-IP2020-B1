@@ -1,42 +1,41 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Conectivitate.Authentication.Models;
 using Conectivitate.Database;
+using Firebase;
+using Firebase.Auth;
+using Firebase.Extensions;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
-public class AuthenticationHandler : MonoBehaviour {
+public class AuthenticationHandler : MonoBehaviour
+{
     protected Firebase.Auth.FirebaseAuth auth;
     private Firebase.Auth.FirebaseAuth otherAuth;
+
     protected Dictionary<string, Firebase.Auth.FirebaseUser> userByAuth =
-    new Dictionary<string, Firebase.Auth.FirebaseUser>();
+        new Dictionary<string, Firebase.Auth.FirebaseUser>();
+
     private string logText = "";
-    public Text emailText;
-    public InputField passwordText;
-    public InputField passwordVerificationText;
-    public Text usernameText;
-    public Text LoginEmailText;
-    public InputField LoginPasswordText;
-    protected string username;
-    protected string email = "";
-    protected string password = "";
-    protected string confirmPassword = "";
-    protected string displayName = "";
-    protected string LoginEmail = "";
-    protected string LoginPassword = "";
+    public InputField emailField;
+    public InputField passwordField;
+    public InputField passwordVerificationField;
+    public InputField usernameField;
+    public InputField loginEmailField;
+    public InputField loginPasswordField;
+    public InputField passwordResetInputField;
     private bool fetchingToken = false;
     private bool UserSignedIn = false;
     const int kMaxLogSize = 16382;
-    Firebase.DependencyStatus dependencyStatus = Firebase.DependencyStatus.UnavailableOther;
+    DependencyStatus dependencyStatus = DependencyStatus.UnavailableOther;
 
     // Start is called before the first frame update
-    void Start()
+    private void Start()
     {
-
-        Firebase.FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task => {
+        Firebase.FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task =>
+        {
             dependencyStatus = task.Result;
             if (dependencyStatus == Firebase.DependencyStatus.Available)
             {
@@ -45,86 +44,75 @@ public class AuthenticationHandler : MonoBehaviour {
             else
             {
                 Debug.LogError(
-                  "Could not resolve all Firebase dependencies: " + dependencyStatus);
+                    "Could not resolve all Firebase dependencies: " + dependencyStatus);
             }
         });
-      
-
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        username = usernameText.text;
-        email = emailText.text;
-        password = passwordText.text;
-        confirmPassword = passwordVerificationText.text;
-        LoginEmail = LoginEmailText.text;
-        LoginPassword = LoginPasswordText.text;
+        DontDestroyOnLoad(this);
     }
 
     void OnDestroy()
     {
-        auth.StateChanged -= AuthStateChanged;
-        auth.IdTokenChanged -= IdTokenChanged;
+        //auth.StateChanged -= AuthStateChanged;
+        //auth.IdTokenChanged -= IdTokenChanged;
         auth = null;
     }
 
-    public void DebugLog(string s)
+    private void DebugLog(string s)
     {
         Debug.Log(s);
         logText += s + "\n";
 
         while (logText.Length > kMaxLogSize)
         {
-            int index = logText.IndexOf("\n");
+            int index = logText.IndexOf("\n", StringComparison.Ordinal);
             logText = logText.Substring(index + 1);
         }
     }
 
-    void InitializeFirebase()
+    private void InitializeFirebase()
     {
         DebugLog("Setting up Firebase Auth");
-        auth = Firebase.Auth.FirebaseAuth.DefaultInstance;
+        auth = FirebaseAuth.DefaultInstance;
         auth.StateChanged += AuthStateChanged;
         auth.IdTokenChanged += IdTokenChanged;
         AuthStateChanged(this, null);
     }
-    
-    //  Track state changes of the auth object. 
-    void AuthStateChanged(object sender, System.EventArgs eventArgs)
+
+    //  Track state changes of the auth object.
+    private void AuthStateChanged(object sender, System.EventArgs eventArgs)
     {
-        Firebase.Auth.FirebaseAuth senderAuth = sender as Firebase.Auth.FirebaseAuth;
-        Firebase.Auth.FirebaseUser user = null;
+        FirebaseAuth senderAuth = sender as FirebaseAuth;
+        FirebaseUser user = null;
         if (senderAuth != null) userByAuth.TryGetValue(senderAuth.App.Name, out user);
-        if (senderAuth == auth && senderAuth.CurrentUser != user)
+        if (senderAuth == auth && senderAuth?.CurrentUser != user)
         {
             bool signedIn = user != senderAuth.CurrentUser && senderAuth.CurrentUser != null;
             if (!signedIn && user != null)
             {
                 DebugLog("Signed out " + user.UserId);
-                //user is logged out, load login screen 
+                //user is logged out, load login screen
             }
+
             user = senderAuth.CurrentUser;
             userByAuth[senderAuth.App.Name] = user;
             if (signedIn)
             {
                 DebugLog("Signed in " + user.UserId);
-                
             }
         }
     }
+
     void IdTokenChanged(object sender, System.EventArgs eventArgs)
     {
-        Firebase.Auth.FirebaseAuth senderAuth = sender as Firebase.Auth.FirebaseAuth;
-        if (senderAuth == auth && senderAuth.CurrentUser != null && !fetchingToken)
+        FirebaseAuth senderAuth = sender as FirebaseAuth;
+        if (senderAuth == auth && senderAuth?.CurrentUser != null && !fetchingToken)
         {
             senderAuth.CurrentUser.TokenAsync(false).ContinueWith(
-              task => DebugLog(String.Format("Token[0:8] = {0}", task.Result.Substring(0, 8))));
+                task => DebugLog($"Token[0:8] = {task.Result.Substring(0, 8)}"));
         }
     }
-    public bool LogTaskCompletion(Task task, string operation)
+
+    private bool LogTaskCompletion(Task task, string operation)
     {
         bool complete = false;
         if (task.IsCanceled)
@@ -133,49 +121,48 @@ public class AuthenticationHandler : MonoBehaviour {
         }
         else if (task.IsFaulted)
         {
-            DebugLog(operation + " encounted an error.");
-            foreach (Exception exception in task.Exception.Flatten().InnerExceptions)
-            {
-
-                string authErrorCode = "";
-                Firebase.FirebaseException firebaseEx = exception as Firebase.FirebaseException;
-
-                if (firebaseEx != null)
+            DebugLog(operation + " encountered an error.");
+            if (task.Exception != null)
+                foreach (var exception in task.Exception.Flatten().InnerExceptions)
                 {
+                    string authErrorCode = "";
 
-                    authErrorCode = String.Format("AuthError.{0}: ",
-                    ((Firebase.Auth.AuthError)firebaseEx.ErrorCode).ToString());
+                    if (exception is FirebaseException firebaseEx)
+                    {
+                        authErrorCode = $"AuthError.{((Firebase.Auth.AuthError) firebaseEx.ErrorCode).ToString()}: ";
+                    }
+
+                    DebugLog(authErrorCode + exception.ToString());
                 }
-                DebugLog(authErrorCode + exception.ToString());
-            }
         }
         else if (task.IsCompleted)
         {
             DebugLog(operation + " completed");
             complete = true;
         }
+
         return complete;
     }
-    public void CreateUserAsync() {
-        DebugLog(String.Format("Attempting to create user {0}...", email));
+
+    public void CreateUserAsync()
+    {
+        DebugLog($"Attempting to create user {emailField.text}...");
 
         // This passes the current displayName through to HandleCreateUserAsync
         // so that it can be passed to UpdateUserProfile().  displayName will be
         // reset by AuthStateChanged() when the new user is created and signed in.
-        string newDisplayName = displayName;
-       
-        if (password.CompareTo(confirmPassword) != 0)
+
+        if (string.Compare(passwordField.text, passwordVerificationField.text, StringComparison.Ordinal) != 0)
         {
             DebugLog("Password does not match");
             return;
         }
-        auth.CreateUserWithEmailAndPasswordAsync("cata.sene12@gmail.com", password)
-            .ContinueWith(task => { 
-                return HandleCreateUserAsync(task, newDisplayName: newDisplayName);
+        auth.CreateUserWithEmailAndPasswordAsync(emailField.text, passwordField.text)
+            .ContinueWith(task => {
+                return HandleCreateUserAsync(task, usernameField.text);
             }).Unwrap();
-        
-    } 
-    
+    }
+
     Task HandleCreateUserAsync(Task<Firebase.Auth.FirebaseUser> authTask, string newDisplayName = null) {
         if (LogTaskCompletion(authTask, "User Creation")) {
             if (auth.CurrentUser != null) {
@@ -183,13 +170,13 @@ public class AuthenticationHandler : MonoBehaviour {
                     auth.CurrentUser.UserId));
 
                 DatabaseHandler databaseHandler = new DatabaseHandler();
-                Debug.Log("Adding to db..");
-                databaseHandler.AddUserToDatabase(new User(username, auth.CurrentUser.UserId));
+                databaseHandler.AddUserToDatabase(new User(usernameField.text, auth.CurrentUser.UserId));
                 Debug.Log("Added to db..");
                 mailVerification(auth.CurrentUser);
                 return UpdateUserProfileAsync(newDisplayName: newDisplayName);
             }
         }
+
         // Nothing to update, so just return a completed Task.
         return Task.FromResult(0);
     }
@@ -212,43 +199,59 @@ public class AuthenticationHandler : MonoBehaviour {
         }
     }
     // Update the user's display name with the currently selected display name.
-    public Task UpdateUserProfileAsync(string newDisplayName = null) {
-        if (auth.CurrentUser == null) {
+    private Task UpdateUserProfileAsync(string newDisplayName = null)
+    {
+        if (auth.CurrentUser == null)
+        {
             DebugLog("Not signed in, unable to update user profile");
             return Task.FromResult(0);
         }
-        displayName = newDisplayName ?? displayName;
         DebugLog("Updating user profile");
         return auth.CurrentUser.UpdateUserProfileAsync(new Firebase.Auth.UserProfile
         {
-            DisplayName = displayName,
+            DisplayName = usernameField.text,
         });
-      }
-    
-    
-    public void SigninAsync() {
-        DebugLog(String.Format("Attempting to sign in as {0}...", email));
-        auth.SignInWithEmailAndPasswordAsync(LoginEmail, LoginPassword)
-            .ContinueWith(HandleSigninResult);
     }
-    
-    void HandleSigninResult(Task<Firebase.Auth.FirebaseUser> authTask) {
+
+
+    public void SigninAsync()
+    {
+        DebugLog(String.Format("Attempting to sign in as {0}...", emailField.text));
+        auth.SignInWithEmailAndPasswordAsync(loginEmailField.text, loginPasswordField.text)
+            .ContinueWithOnMainThread(HandleSigninResult);
+    }
+
+    private void HandleSigninResult(Task<Firebase.Auth.FirebaseUser> authTask)
+    {
         LogTaskCompletion(authTask, "Sign-in");
-        UserSignedIn = true;
-        SceneManager.LoadSceneAsync("Start Menu");
+        DatabaseHandler databaseHandler = new DatabaseHandler();
+        bool retrieved = databaseHandler.RetrieveUserFromDatabase();
+        Debug.Log("Retrieved: "+retrieved);
+        if(retrieved){
+            Debug.Log("AppUser username: " + AppUser.username);
+            Debug.Log(AppUser.Instance.id);
+            LoadLobbyScene();
+        }
+        else
+        {
+            Debug.Log("Eroare la logare");
+        }
     }
-    
-    
-    public void GetUserToken() {
-        if (auth.CurrentUser == null) {
+
+
+    public void GetUserToken()
+    {
+        if (auth.CurrentUser == null)
+        {
             DebugLog("Not signed in, unable to get token.");
             return;
         }
+
         DebugLog("Fetching user token");
         fetchingToken = true;
         auth.CurrentUser.TokenAsync(false).ContinueWith(HandleGetUserToken);
     }
-    
+
     //functia verifica daca este un user logat in momentul apelarii. (variabila de tipul bool tine evidenta logarii unui user) Daca nu e nimeni logat,
     //apare in consola mesajul respectiv si se face return. Daca e cinema logat se apeleaza metoda auth.SignOut(), UserSignedIn devine false (nu mai e nimeni logat) si se transfera la scena Login_Register
     public void SignOut()
@@ -268,11 +271,34 @@ public class AuthenticationHandler : MonoBehaviour {
         }
     }
 
-    void HandleGetUserToken(Task<string> authTask) {
+    private void HandleGetUserToken(Task<string> authTask) {
         fetchingToken = false;
-        if (LogTaskCompletion(authTask, "User token fetch")) {
+        if (LogTaskCompletion(authTask, "User token fetch"))
+        {
             DebugLog("Token = " + authTask.Result);
         }
     }
-  
+
+    public void SendResetPasswordEmail()
+    {
+        string email = passwordResetInputField.text;
+        auth.SendPasswordResetEmailAsync(email).ContinueWith(task =>
+        {
+            if (task.IsFaulted || task.IsCanceled)
+            {
+                Debug.Log("Email is not recognized!");
+            }
+            else
+            {
+                Debug.Log("Email sent successfully!");
+            }
+        });
+    }
+
+    private void LoadLobbyScene()
+    {   
+        DebugLog("Loading scene..");
+        SceneManager.LoadScene("CreateLobby");
+        Debug.Log("Scene loaded..");
+    }
 }

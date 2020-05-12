@@ -21,8 +21,13 @@
     </explicitIncludes>
     <explicitExcludes>
       <Path>.idea</Path>
+      <Path>.vs</Path>
+      <Path>D&amp;D</Path>
+      <Path>Dungeons And Dragons_Data</Path>
+      <Path>Export</Path>
       <Path>Library</Path>
       <Path>Logs</Path>
+      <Path>MonoBleedingEdge</Path>
       <Path>Temp</Path>
       <Path>obj</Path>
     </explicitExcludes>
